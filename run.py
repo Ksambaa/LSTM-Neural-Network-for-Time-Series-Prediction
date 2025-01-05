@@ -11,81 +11,66 @@ import matplotlib.pyplot as plt
 from core.data_processor import DataLoader
 from core.model import Model
 
-
-def plot_results(predicted_data, true_data):
-    fig = plt.figure(facecolor='white')
-    ax = fig.add_subplot(111)
-    ax.plot(true_data, label='True Data')
-    plt.plot(predicted_data, label='Prediction')
-    plt.legend()
+def plot_results(predicted_data, true_data, dates=None):
+    """Plot the predicted vs actual water debit"""
+    plt.figure(figsize=(15, 7))
+    plt.plot(true_data, label='True Data', linewidth=2, alpha=0.7)
+    plt.plot(predicted_data, label='Prediction', linewidth=2, alpha=0.7)
+    plt.title('Water Debit Prediction', fontsize=14)
+    plt.xlabel('Time Steps', fontsize=12)
+    plt.ylabel('Debit', fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend(fontsize=10)
+    plt.tight_layout()
     plt.show()
-
-
-def plot_results_multiple(predicted_data, true_data, prediction_len):
-    fig = plt.figure(facecolor='white')
-    ax = fig.add_subplot(111)
-    ax.plot(true_data, label='True Data')
-	# Pad the list of predictions to shift it in the graph to it's correct start
-    for i, data in enumerate(predicted_data):
-        padding = [None for p in range(i * prediction_len)]
-        plt.plot(padding + data, label='Prediction')
-        plt.legend()
-    plt.show()
-
 
 def main():
-    configs = json.load(open('config.json', 'r'))
-    if not os.path.exists(configs['model']['save_dir']): os.makedirs(configs['model']['save_dir'])
+    config = json.load(open('config.json', 'r'))
+
+    if not os.path.exists(config['model']['save_dir']):
+        os.makedirs(config['model']['save_dir'])
 
     data = DataLoader(
-        os.path.join('data', configs['data']['filename']),
-        configs['data']['train_test_split'],
-        configs['data']['columns']
+        os.path.join('data', config['data']['filename']),
+        config['data']['train_test_split'],
+        config['data']['columns']
     )
 
     model = Model()
-    model.build_model(configs)
+    model.build_model(config)
+
     x, y = data.get_train_data(
-        seq_len=configs['data']['sequence_length'],
-        normalise=configs['data']['normalise']
+        seq_len=config['data']['sequence_length'],
+        normalise=config['data']['normalise']
     )
 
-    '''
-	# in-memory training
-	model.train(
-		x,
-		y,
-		epochs = configs['training']['epochs'],
-		batch_size = configs['training']['batch_size'],
-		save_dir = configs['model']['save_dir']
-	)
-	'''
-    # out-of memory generative training
-    steps_per_epoch = math.ceil((data.len_train - configs['data']['sequence_length']) / configs['training']['batch_size'])
+    # Train the model
+    steps_per_epoch = math.ceil((data.len_train - config['data']['sequence_length']) / config['training']['batch_size'])
     model.train_generator(
         data_gen=data.generate_train_batch(
-            seq_len=configs['data']['sequence_length'],
-            batch_size=configs['training']['batch_size'],
-            normalise=configs['data']['normalise']
+            seq_len=config['data']['sequence_length'],
+            batch_size=config['training']['batch_size'],
+            normalise=config['data']['normalise']
         ),
-        epochs=configs['training']['epochs'],
-        batch_size=configs['training']['batch_size'],
+        epochs=config['training']['epochs'],
+        batch_size=config['training']['batch_size'],
         steps_per_epoch=steps_per_epoch,
-        save_dir=configs['model']['save_dir']
+        save_dir=config['model']['save_dir']
     )
 
+    # Make predictions
     x_test, y_test = data.get_test_data(
-        seq_len=configs['data']['sequence_length'],
-        normalise=configs['data']['normalise']
+        seq_len=config['data']['sequence_length'],
+        normalise=config['data']['normalise']
+    )
+    predictions = model.predict_sequences_multiple(
+        x_test, 
+        config['data']['sequence_length'],
+        config['data']['sequence_length']
     )
 
-    predictions = model.predict_sequences_multiple(x_test, configs['data']['sequence_length'], configs['data']['sequence_length'])
-    # predictions = model.predict_sequence_full(x_test, configs['data']['sequence_length'])
-    # predictions = model.predict_point_by_point(x_test)
-
-    plot_results_multiple(predictions, y_test, configs['data']['sequence_length'])
-    # plot_results(predictions, y_test)
-
+    # Plot results
+    plot_results(predictions, y_test)
 
 if __name__ == '__main__':
     main()
